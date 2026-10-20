@@ -1,0 +1,73 @@
+name: firefox_win_build
+
+services:
+  firefox_build_manager:
+    build:
+      context: ./manager
+    container_name: firefox_win_build_manager
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      DATA_DIR: /data
+      PROJECT_PLATFORM: windows-x64
+      MANAGER_PORT: 48080
+      WORKER_HOST: firefox_windows_builder
+      WORKER_SSH_PORT: 22
+      WORKER_USER: ${WINDOWS_USER:-Builder}
+      WORKER_PASSWORD: ${WINDOWS_PASSWORD:-}
+      WORKER_OEM_DIR: /worker_oem
+      TZ: ${TZ:-Europe/Berlin}
+    ports:
+      - "${MANAGER_PORT:-48080}:48080"
+    volumes:
+      - ./data:/data
+      - ./windows_worker/oem:/worker_oem:ro
+    networks:
+      - firefox_win_build
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:48080/health', timeout=3).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
+
+  firefox_windows_builder:
+    image: dockurr/windows:6.05
+    container_name: firefox_win_builder
+    restart: unless-stopped
+    stop_grace_period: 2m
+    environment:
+      VERSION: ${WINDOWS_VERSION:-11}
+      RAM_SIZE: ${WINDOWS_RAM_SIZE:-5G}
+      CPU_CORES: ${WINDOWS_CPU_CORES:-8}
+      DISK_SIZE: ${WINDOWS_DISK_SIZE:-160G}
+      DISK2_SIZE: ${WINDOWS_DEV_DRIVE_SIZE:-256G}
+      USERNAME: ${WINDOWS_USER:-Builder}
+      PASSWORD: ${WINDOWS_PASSWORD:-ChangeMe_FirefoxBuild_123!}
+      LANGUAGE: English
+      REGION: en-US
+      KEYBOARD: ${WINDOWS_KEYBOARD:-de-DE}
+      USER_PORTS: "22"
+      LOG: "Y"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "${WINDOWS_WEB_PORT:-8006}:8006"
+      - "${WINDOWS_RDP_PORT:-3389}:3389/tcp"
+      - "${WINDOWS_RDP_PORT:-3389}:3389/udp"
+      - "${WINDOWS_SSH_PORT:-2222}:22/tcp"
+    volumes:
+      - ./data/windows_vm:/storage
+      - ./data/windows_devdrive:/storage2
+      - ./data/shared:/shared
+      - ./windows_worker/oem:/oem:ro
+    networks:
+      - firefox_win_build
+
+networks:
+  firefox_win_build:
+    name: firefox_win_build
+    driver: bridge
